@@ -63,6 +63,9 @@ export class MongoStore implements AnchorStore {
     const client = new MongoClient(uri, {
       serverSelectionTimeoutMS: timeoutMs,
       connectTimeoutMS: timeoutMs,
+      // Optional fields left undefined must be omitted, not stored as null,
+      // or the Zod schemas reject them on read.
+      ignoreUndefined: true,
     });
     await client.connect();
     const store = new MongoStore(client, client.db(dbName));
