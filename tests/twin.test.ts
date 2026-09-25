@@ -122,6 +122,28 @@ describe("speech engine order: twin → Kokoro → browser", () => {
     expect(urls).not.toContain("http://twin");
   });
 
+  it("sends the transcript as speaker_text when the profile has one", async () => {
+    await enroll({ transcript: "  Most mornings   I make coffee.  " });
+    let body: Record<string, unknown> = {};
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      body = JSON.parse(String(init?.body));
+      return audio();
+    });
+    await synthesize(store, { text: "Hello", patientId: PATIENT }, { fetch: fetchMock as typeof fetch, config: cfg });
+    expect(body.speaker_text).toBe("Most mornings I make coffee.");
+  });
+
+  it("omits speaker_text when there is no transcript", async () => {
+    await enroll();
+    let body: Record<string, unknown> = {};
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      body = JSON.parse(String(init?.body));
+      return audio();
+    });
+    await synthesize(store, { text: "Hello", patientId: PATIENT }, { fetch: fetchMock as typeof fetch, config: cfg });
+    expect(body).not.toHaveProperty("speaker_text");
+  });
+
   it("falls back to the browser when nothing is configured", async () => {
     await enroll();
     const fetchMock = vi.fn();

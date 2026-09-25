@@ -2,7 +2,8 @@
 Anchor Digital Twin TTS: an XTTS-v2 voice-cloning server that speaks Anchor's
 twin contract.
 
-    POST /twin    {"text": str, "language": "en", "speaker_wav": <base64 16-bit PCM WAV>}
+    POST /twin    {"text": str, "language": "en", "speaker_wav": <base64 16-bit PCM WAV>,
+                   "speaker_text": str (exact transcript; required by the csm engine)}
                   -> 200 audio/wav (24 kHz mono), or a JSON error
     GET  /health  -> {"engine", "device", "ready", "cached_speakers"}
 
@@ -15,11 +16,12 @@ Design notes
 - XTTS normally loads references through torchaudio.load, which needs
   torchcodec/FFmpeg on torchaudio >= 2.9 and is fragile on aarch64. The
   reference is always PCM WAV here, so it is decoded with the stdlib instead.
-- TWIN_ENGINE=stub answers with a tone and needs only numpy: use it to test the
-  contract without a GPU or the model.
-
-The XTTS-v2 weights are under the Coqui Public Model License (non-commercial).
-The server refuses to load them unless COQUI_TOS_AGREED=1 is set explicitly.
+- TWIN_ENGINE picks the model:
+    csm   Sesame CSM-1B (Apache-2.0). Conditions on a 3-12 s reference plus its
+          exact transcript. The engine the hackathon GB10 build used.
+    xtts  Coqui XTTS-v2. Non-commercial CPML: refuses to load unless
+          COQUI_TOS_AGREED=1 is set explicitly.
+    stub  a tone; needs only numpy. For contract tests without a GPU.
 """
 
 from __future__ import annotations
@@ -44,7 +46,7 @@ log = logging.getLogger("twin-tts")
 
 HOST = os.environ.get("TWIN_HOST", "127.0.0.1")
 PORT = int(os.environ.get("TWIN_PORT", "8020"))
-ENGINE = os.environ.get("TWIN_ENGINE", "xtts")  # xtts | stub
+ENGINE = os.environ.get("TWIN_ENGINE", "csm")  # csm | xtts | stub
 MODEL_NAME = os.environ.get("TWIN_MODEL", "tts_models/multilingual/multi-dataset/xtts_v2")
 MAX_TEXT = int(os.environ.get("TWIN_MAX_TEXT", "1200"))
 MAX_SAMPLE_BYTES = int(os.environ.get("TWIN_MAX_SAMPLE_BYTES", str(6 * 1024 * 1024)))
@@ -54,6 +56,9 @@ CACHE_TTL_S = float(os.environ.get("TWIN_CACHE_TTL_S", "600"))
 
 # XTTS-v2 languages.
 LANGUAGES = {"en", "es", "fr", "de", "it", "pt", "pl", "tr", "ru", "nl", "cs", "ar", "zh-cn", "hu", "ko", "ja", "hi"}
+
+
+CSM_MIN_REF_S, CSM_MAX_REF_S, CSM_MAX_CHUNK = 3.0, 12.0, 400
 
 
 class BadRequest(Exception):
@@ -100,8 +105,13 @@ class StubEngine:
     device = "cpu"
     ready = True
 
-    def synthesize(self, text: str, language: str, sample: bytes, key: str) -> tuple[np.ndarray, int]:
+    def __init__(self, require_transcript: bool = False) -> None:
+        self.require_transcript = require_transcript
+
+    def synthesize(self, text: str, language: str, sample: bytes, key: str, speaker_text: str | None = None) -> tuple[np.ndarray, int]:
         audio, rate = decode_wav(sample)  # validates the sample like the real engine
+        if self.require_transcript:
+            check_csm_reference(audio, rate, speaker_text)
         if audio.size == 0:
             raise BadRequest("speaker_wav is empty.")
         out_rate = 24000
@@ -180,7 +190,7 @@ class XttsEngine:
             self.cache.popitem(last=False)
         return gpt_cond_latent, speaker_embedding
 
-    def synthesize(self, text: str, language: str, sample: bytes, key: str) -> tuple[np.ndarray, int]:
+    def synthesize(self, text: str, language: str, sample: bytes, key: str, speaker_text: str | None = None) -> tuple[np.ndarray, int]:
         with self.lock, self.torch.inference_mode():
             gpt_cond_latent, speaker_embedding = self._latents(sample, key)
             out = self.model.inference(
@@ -198,9 +208,100 @@ class XttsEngine:
         return len(self.cache)
 
 
+def check_csm_reference(audio: np.ndarray, rate: int, speaker_text: str | None) -> None:
+    if not speaker_text:
+        raise BadRequest("The csm engine needs speaker_text: the exact words spoken in speaker_wav.")
+    seconds = audio.size / rate
+    if not CSM_MIN_REF_S <= seconds <= CSM_MAX_REF_S:
+        raise BadRequest(
+            f"The csm engine needs a {CSM_MIN_REF_S:.0f}-{CSM_MAX_REF_S:.0f} s reference (got {seconds:.1f} s). "
+            "Re-record the short reading passage."
+        )
+
+
+def split_for_csm(text: str, limit: int = CSM_MAX_CHUNK) -> list[str]:
+    """Split on sentence ends so each generation stays short; CSM is best at a sentence or two."""
+    import re
+
+    sentences = [s for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s]
+    chunks: list[str] = []
+    for sentence in sentences:
+        while len(sentence) > limit:  # a run-on sentence: cut at the last space
+            cut = sentence.rfind(" ", 0, limit)
+            cut = cut if cut > 0 else limit
+            chunks.append(sentence[:cut].strip())
+            sentence = sentence[cut:].strip()
+        if chunks and len(chunks[-1]) + 1 + len(sentence) <= limit:
+            chunks[-1] = f"{chunks[-1]} {sentence}"
+        elif sentence:
+            chunks.append(sentence)
+    return chunks
+
+
+class CsmEngine:
+    """Sesame CSM-1B through Transformers, BF16 on CUDA. Port of the GB10 hackathon backend."""
+
+    name = "csm-1b"
+    SAMPLE_RATE = 24000
+
+    def __init__(self) -> None:
+        import torch
+        import torchaudio.functional as AF
+        from transformers import AutoProcessor, CsmForConditionalGeneration
+
+        self.torch, self.AF = torch, AF
+        model_id = os.environ.get("TWIN_CSM_MODEL", "sesame/csm-1b")
+        local_only = os.path.isdir(model_id)
+        self.device = os.environ.get("TWIN_DEVICE") or ("cuda" if torch.cuda.is_available() else "cpu")
+        dtype = torch.bfloat16 if self.device == "cuda" else torch.float32
+        t0 = time.perf_counter()
+        self.processor = AutoProcessor.from_pretrained(model_id, local_files_only=local_only)
+        self.model = CsmForConditionalGeneration.from_pretrained(
+            model_id, device_map=self.device, torch_dtype=dtype, local_files_only=local_only
+        )
+        self.dtype = next(self.model.parameters()).dtype
+        log.info("CSM-1B loaded on %s (%s) in %.1fs", self.device, self.dtype, time.perf_counter() - t0)
+        self.lock = threading.Lock()
+        self.ready = True
+
+    def _reference(self, sample: bytes, speaker_text: str | None) -> np.ndarray:
+        audio, rate = decode_wav(sample)
+        check_csm_reference(audio, rate, speaker_text)
+        if rate != self.SAMPLE_RATE:
+            tensor = self.AF.resample(self.torch.from_numpy(audio.copy()).unsqueeze(0), rate, self.SAMPLE_RATE)
+            audio = tensor.squeeze(0).numpy()
+        return np.clip(audio, -1.0, 1.0).astype(np.float32)
+
+    def _generate(self, reference: np.ndarray, speaker_text: str, text: str) -> np.ndarray:
+        conversation = [
+            {"role": "0", "content": [{"type": "text", "text": speaker_text}, {"type": "audio", "path": reference}]},
+            {"role": "0", "content": [{"type": "text", "text": text}]},
+        ]
+        inputs = self.processor.apply_chat_template(conversation, tokenize=True, return_dict=True).to(self.device)
+        # GB10 fix from the hackathon build: floating inputs must match the BF16 weights.
+        inputs = {k: v.to(dtype=self.dtype) if v.is_floating_point() else v for k, v in inputs.items()}
+        out = self.model.generate(**inputs, output_audio=True)
+        wav = out[0] if isinstance(out, (list, tuple)) else out
+        return wav.detach().float().cpu().numpy().reshape(-1)
+
+    def synthesize(self, text: str, language: str, sample: bytes, key: str, speaker_text: str | None = None) -> tuple[np.ndarray, int]:
+        if language != "en":
+            raise BadRequest("The csm engine speaks English only.")
+        reference = self._reference(sample, speaker_text)
+        pieces = []
+        with self.lock, self.torch.inference_mode():
+            for chunk in split_for_csm(text):
+                pieces.append(self._generate(reference, speaker_text or "", chunk))
+                pieces.append(np.zeros(int(self.SAMPLE_RATE * 0.12), dtype=np.float32))  # short breath between sentences
+        return np.concatenate(pieces[:-1] if len(pieces) > 1 else pieces), self.SAMPLE_RATE
+
+    def cached(self) -> int:
+        return 0
+
+
 # ---------- HTTP ----------
 
-def parse_request(body: bytes) -> tuple[str, str, bytes]:
+def parse_request(body: bytes) -> tuple[str, str, bytes, str | None]:
     try:
         payload = json.loads(body)
     except (json.JSONDecodeError, UnicodeDecodeError) as err:
@@ -224,7 +325,11 @@ def parse_request(body: bytes) -> tuple[str, str, bytes]:
         raise BadRequest("speaker_wav is not valid base64.") from err
     if len(sample) > MAX_SAMPLE_BYTES:
         raise BadRequest("speaker_wav is too large.", 413)
-    return text.strip(), language, sample
+    speaker_text = payload.get("speaker_text")
+    if speaker_text is not None and not isinstance(speaker_text, str):
+        raise BadRequest("speaker_text must be a string.")
+    speaker_text = " ".join(speaker_text.split())[:2000] if speaker_text else None
+    return text.strip(), language, sample, speaker_text
 
 
 def make_handler(engine):
@@ -259,10 +364,10 @@ def make_handler(engine):
             if length > MAX_BODY_BYTES:
                 return self._json(413, {"error": "Body is too large."})
             try:
-                text, language, sample = parse_request(self.rfile.read(length))
-                key = hashlib.sha256(sample).hexdigest()
+                text, language, sample, speaker_text = parse_request(self.rfile.read(length))
+                key = hashlib.sha256(sample + (speaker_text or "").encode()).hexdigest()
                 t0 = time.perf_counter()
-                audio, rate = engine.synthesize(text, language, sample, key)
+                audio, rate = engine.synthesize(text, language, sample, key, speaker_text)
                 data = encode_wav(audio, rate)
                 log.info("twin: %d chars -> %.1fs audio in %.2fs", len(text), audio.size / rate, time.perf_counter() - t0)
             except BadRequest as err:
@@ -281,7 +386,15 @@ def make_handler(engine):
 
 
 def build_engine():
-    return StubEngine() if ENGINE == "stub" else XttsEngine()
+    if ENGINE == "stub":
+        return StubEngine()
+    if ENGINE == "stub-csm":  # the csm engine's request rules, without the model
+        return StubEngine(require_transcript=True)
+    if ENGINE == "csm":
+        return CsmEngine()
+    if ENGINE == "xtts":
+        return XttsEngine()
+    raise SystemExit(f"Unknown TWIN_ENGINE '{ENGINE}'. Use csm, xtts, or stub.")
 
 
 def main() -> None:

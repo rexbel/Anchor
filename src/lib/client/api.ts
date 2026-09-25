@@ -30,6 +30,7 @@ export type PatientSummary = {
   diagnosis: RecoveryPlan["diagnosis"];
   openEscalations: number;
   patternFlags: number;
+  twin: { active: true; consentedBy: string; source: "enrolled" | "deployment" } | { active: false };
 };
 export type PatientDetail = {
   plan: RecoveryPlan;
@@ -51,6 +52,7 @@ export type { CheckinResult };
 export type VoiceState = {
   profile: VoiceProfile | null;
   consentStatement: string;
+  readingPassage: string;
   limits: { minSec: number; maxSec: number; maxBytes: number };
 };
 
@@ -72,7 +74,7 @@ export const api = {
   metrics: () => call<Metrics>("/api/metrics"),
   queue: () => call<{ queue: QueueRow[] }>("/api/queue"),
   propose: (id: string) => call<{ gateRequest: GateRequest; source: string }>(`/api/queue/${id}/propose`, { method: "POST" }),
-  patients: () => call<{ patients: PatientSummary[] }>("/api/patients"),
+  patients: () => call<{ patients: PatientSummary[]; featured: string }>("/api/patients"),
   patient: (id: string) => call<PatientDetail>(`/api/patients/${id}`),
   checkin: (body: { patientId: string; direction: "inbound" | "outbound"; utterance: string }) =>
     call<CheckinResult>("/api/checkins", { method: "POST", body: JSON.stringify(body) }),
@@ -87,8 +89,9 @@ export const api = {
     call<{ events: AuditRow[] }>(`/api/audit${patientId ? `?patientId=${encodeURIComponent(patientId)}` : ""}`),
   reset: () => call<{ ok: true }>("/api/reset", { method: "POST" }),
   voice: (patientId: string) => call<VoiceState>(`/api/voices?patientId=${encodeURIComponent(patientId)}`),
-  enrollVoice: async (body: { patientId: string; wav: Uint8Array; consentName: string }) => {
+  enrollVoice: async (body: { patientId: string; wav: Uint8Array; consentName: string; transcript?: string }) => {
     const form = new FormData();
+    if (body.transcript?.trim()) form.set("transcript", body.transcript.trim());
     form.set("patientId", body.patientId);
     form.set("consentName", body.consentName);
     form.set("consent", "true");

@@ -91,16 +91,21 @@ All are optional. With none set, Anchor uses deterministic triage, the seeded me
 | `ANCHOR_LLM_BASE_URL`, `ANCHOR_LLM_MODEL`, `ANCHOR_LLM_API_KEY`, `ANCHOR_LLM_TIMEOUT_MS` | Local reasoning model |
 | `ANCHOR_TTS_BASE_URL`, `ANCHOR_TTS_MODEL`, `ANCHOR_TTS_VOICE` | Kokoro voice |
 | `ANCHOR_TWIN_TTS_URL` | Voice-cloning TTS for the Digital Twin (see below) |
+| `ANCHOR_DEMO_TWIN_WAV`, `ANCHOR_DEMO_TWIN_TEXT`, `ANCHOR_DEMO_TWIN_PATIENT`, `ANCHOR_DEMO_TWIN_CONSENTED_BY` | Seed a consented demo voice (all four required) |
 | `OPENCLAW_HOOK_URL`, `OPENCLAW_HOOK_TOKEN` | Authenticated escalation handoff |
 | `ANCHOR_DEMO_MODE` | Set to `false` to disable the reset button |
 
-## Digital Twin voice
+## Live call and Digital Twin voice
 
-Open **Create the Digital Twin voice** from any check-in (`/twin/[patientId]`). The patient reads a short passage (5 to 60 seconds), or uploads a recording, then reads a consent statement, ticks the box, and types their name. The browser converts the audio to 16-bit mono WAV at 22.05 kHz. Anchor stores the sample, audits the consent, and keeps one active twin per patient. **Withdraw consent** deletes the recording.
+**Live call** (`/call/[patientId]`, "Live call" in the header) is the main demo. Choose **Anchor calls** (outbound: the phone rings, the patient answers, and Anchor opens with the clinician-approved line) or **the patient calls** (inbound: the patient speaks first). Each turn, dictated or typed, goes through the same pipeline as a check-in: deterministic floor plus model, Tier 3 escalates with no gate, Tier 2 waits at the gate. Anchor replies with vetted lines, spoken in the patient's Digital Twin voice. Hanging up shows the call summary. The opener's audio is rendered before the call starts, so it plays without a wait. The step-by-step pipeline view is still at `/checkin/[patientId]`.
 
-Speech then comes from the best engine available: the Digital Twin (`ANCHOR_TWIN_TTS_URL`), then Kokoro, then the browser. The `X-Anchor-Voice-Engine` response header says which one spoke.
+**Enrollment** (`/twin/[patientId]`): the patient reads a short passage (about 8 seconds) or uploads a recording, reads a consent statement, ticks the box, and types their name. A recording of the passage is saved with its exact transcript. An upload can include one. Anchor stores the sample, audits the consent, and keeps one active twin per patient. **Withdraw consent** deletes the recording.
 
-**Cloning server contract.** `POST $ANCHOR_TWIN_TTS_URL` with JSON `{ "text": string, "language": "en", "speaker_wav": <base64 WAV> }`, answered with audio (`audio/wav` or `audio/mpeg`). XTTS-v2 takes the sample as its `speaker_wav`. [`services/twin-tts`](services/twin-tts/README.md) is a ready XTTS-v2 server for the GB10 that implements this contract (`docker compose --profile twin`). XTTS-v2's weights are non-commercial. `npm run mock:gb10` serves a stand-in at `/twin`.
+**Demo voice.** To run the demo in a voice enrolled ahead of time (for example the hackathon T7 bundle's consented `self_ref.wav` and `self_ref.txt`), set `ANCHOR_DEMO_TWIN_WAV`, `ANCHOR_DEMO_TWIN_TEXT`, `ANCHOR_DEMO_TWIN_PATIENT`, and `ANCHOR_DEMO_TWIN_CONSENTED_BY`. Anchor seeds that twin at startup and after a demo reset, and audits it as consent attested at deployment. It never seeds without the consenting person's name. Keep the reference outside the repository.
+
+Speech comes from the best engine available: the Digital Twin (`ANCHOR_TWIN_TTS_URL`), then Kokoro, then the browser. The `X-Anchor-Voice-Engine` response header, and the call screen, say which one spoke.
+
+**Cloning server contract.** `POST $ANCHOR_TWIN_TTS_URL` with JSON `{ "text": string, "language": "en", "speaker_wav": <base64 WAV>, "speaker_text"?: string }`, answered with audio (`audio/wav` or `audio/mpeg`). [`services/twin-tts`](services/twin-tts/README.md) implements it on the GB10 (`docker compose --profile twin`). Its default engine is **Sesame CSM-1B** (Apache-2.0), the model the hackathon GB10 build used, which needs a 3 to 12 second reference plus its transcript. **XTTS-v2** is available too; its weights are non-commercial. `npm run mock:gb10` serves a stand-in at `/twin`.
 
 **As they hear themselves.** People hear their own voice partly through bone conduction, so it sounds fuller and lower to them than a recording does. Anchor can play rendered speech through a low-shelf boost, a gentle high-shelf cut, and a short, quiet reverb, all adjustable per patient. The processing runs in the browser (Web Audio), so it applies to Digital Twin and Kokoro audio but not to the browser's built-in voice.
 

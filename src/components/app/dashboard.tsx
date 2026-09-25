@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, PhoneIncoming, PhoneOutgoing, RotateCcw, Send } from "lucide-react";
+import { ArrowRight, Headphones, ListChecks, PhoneIncoming, PhoneOutgoing, RotateCcw, Send, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { StatusStrip } from "@/components/app/status-strip";
@@ -33,6 +33,7 @@ function timeUntil(iso: string) {
 
 export function Dashboard() {
   const [patients, setPatients] = useState<PatientSummary[] | null>(null);
+  const [featuredId, setFeaturedId] = useState<string | null>(null);
   const [queue, setQueue] = useState<QueueRow[] | null>(null);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +44,7 @@ export function Dashboard() {
     try {
       const [p, q, m] = await Promise.all([api.patients(), api.queue(), api.metrics()]);
       setPatients(p.patients);
+      setFeaturedId(p.featured);
       setQueue(q.queue);
       setMetrics(m);
       setError(null);
@@ -103,11 +105,16 @@ export function Dashboard() {
           </p>
           <div className="flex flex-wrap items-center gap-3">
             <Button asChild size="lg" variant="brand">
-              <Link href="/checkin/demo-patient-edge?direction=inbound">
-                <PhoneIncoming /> Run the Tier 3 demo
+              <Link href="/call">
+                <Headphones /> Start a live call
               </Link>
             </Button>
             <Button asChild size="lg" variant="outline">
+              <Link href="/call/demo-patient-edge?direction=inbound">
+                <PhoneIncoming /> Tier 3 inbound demo
+              </Link>
+            </Button>
+            <Button asChild size="lg" variant="ghost">
               <Link href="/how-it-works">How it works</Link>
             </Button>
           </div>
@@ -135,6 +142,8 @@ export function Dashboard() {
           </CardFooter>
         </Card>
       </section>
+
+      <TwinHero patient={patients?.find((p) => p.patientId === featuredId) ?? null} loading={patients === null} />
 
       <StatusStrip />
 
@@ -179,18 +188,36 @@ export function Dashboard() {
                         </CardDescription>
                       </CardHeader>
                       <CardContent className="flex-1 text-sm text-muted-foreground">{p!.scenarioBlurb}</CardContent>
-                      <CardFooter className="flex items-center justify-between gap-2">
-                        <Button asChild size="sm" variant={p!.scenario === "edge" ? "brand" : "outline"}>
-                          <Link href={`/checkin/${p!.patientId}?direction=${meta.direction}`}>
-                            {meta.direction === "inbound" ? <PhoneIncoming /> : <PhoneOutgoing />}
-                            Start check-in
-                          </Link>
-                        </Button>
-                        {p!.openEscalations > 0 ? (
-                          <Badge variant="tier3">{p!.openEscalations} open</Badge>
-                        ) : p!.patternFlags > 0 ? (
-                          <Badge variant="tier2">{p!.patternFlags} flagged</Badge>
-                        ) : null}
+                      <CardFooter className="flex flex-col items-stretch gap-3">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Badge variant={p!.twin.active ? "brand" : "outline"} className="gap-1">
+                            <Headphones className="size-3" aria-hidden />
+                            {p!.twin.active ? "Twin voice" : "No twin voice"}
+                          </Badge>
+                          {p!.openEscalations > 0 ? (
+                            <Badge variant="tier3">{p!.openEscalations} open</Badge>
+                          ) : p!.patternFlags > 0 ? (
+                            <Badge variant="tier2">{p!.patternFlags} flagged</Badge>
+                          ) : null}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button asChild size="sm" variant={meta.direction === "outbound" ? "brand" : "outline"}>
+                            <Link href={`/call/${p!.patientId}?direction=outbound`}>
+                              <PhoneOutgoing /> Outbound
+                            </Link>
+                          </Button>
+                          <Button asChild size="sm" variant={meta.direction === "inbound" ? "brand" : "outline"}>
+                            <Link href={`/call/${p!.patientId}?direction=inbound`}>
+                              <PhoneIncoming /> Inbound
+                            </Link>
+                          </Button>
+                        </div>
+                        <Link
+                          href={`/checkin/${p!.patientId}?direction=${meta.direction}`}
+                          className="flex items-center gap-1 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                        >
+                          <ListChecks className="size-3.5" aria-hidden /> Step-by-step pipeline view
+                        </Link>
                       </CardFooter>
                     </Card>
                   );
@@ -254,7 +281,7 @@ export function Dashboard() {
                         </Button>
                       ) : row.status === "call_placed" ? (
                         <Button asChild size="sm" variant="ghost">
-                          <Link href={`/checkin/${row.patientId}?direction=outbound`}>
+                          <Link href={`/call/${row.patientId}?direction=outbound`}>
                             Take the call <ArrowRight />
                           </Link>
                         </Button>
@@ -268,6 +295,56 @@ export function Dashboard() {
         </Card>
       </section>
     </div>
+  );
+}
+
+function TwinHero({ patient, loading }: { patient: PatientSummary | null; loading: boolean }) {
+  if (loading) return <Skeleton className="h-48 rounded-xl" />;
+  if (!patient) return null;
+  const first = patient.displayName.split(" ")[0];
+  return (
+    <section
+      aria-labelledby="twin-hero"
+      className="grid gap-6 overflow-hidden rounded-2xl bg-[#111] p-6 text-white sm:p-8 lg:grid-cols-[1.2fr_1fr] lg:items-center"
+    >
+      <div className="flex flex-col gap-3">
+        <Badge className="w-fit gap-1.5 border-white/20 bg-white/10 text-white">
+          <Headphones className="size-3.5" aria-hidden /> Digital Twin voice
+        </Badge>
+        <h2 id="twin-hero" className="text-balance text-2xl font-bold tracking-tight sm:text-3xl">
+          Hear Anchor in the patient&apos;s own voice.
+        </h2>
+        <p className="max-w-xl text-pretty text-white/70">
+          With consent, {first} records a few seconds of their voice. Anchor then calls, or answers, as their Digital
+          Twin: the same clinician-vetted lines and safety routing, in a voice they already trust.
+        </p>
+        <p className="flex items-center gap-1.5 text-sm text-white/70">
+          <ShieldCheck className="size-4" aria-hidden />
+          {patient.twin.active
+            ? `${patient.displayName}: voice enrolled, consent ${patient.twin.source === "deployment" ? "attested at deployment" : "recorded"} (${patient.twin.consentedBy}).`
+            : `${patient.displayName}: no voice yet. Record one in under a minute.`}
+        </p>
+      </div>
+      <div className="flex flex-col gap-3">
+        <div className="grid grid-cols-2 gap-3">
+          <Button asChild size="lg" variant="brand" className="rounded-full">
+            <Link href={`/call/${patient.patientId}?direction=outbound`}>
+              <PhoneOutgoing /> Anchor calls {first}
+            </Link>
+          </Button>
+          <Button asChild size="lg" variant="outline" className="rounded-full border-white/30 bg-transparent text-white hover:bg-white/10 hover:text-white">
+            <Link href={`/call/${patient.patientId}?direction=inbound`}>
+              <PhoneIncoming /> {first} calls Anchor
+            </Link>
+          </Button>
+        </div>
+        <Button asChild variant="ghost" className="text-white/80 hover:bg-white/10 hover:text-white">
+          <Link href={`/twin/${patient.patientId}`}>
+            {patient.twin.active ? "Manage the Digital Twin voice" : "Create the Digital Twin voice"} <ArrowRight />
+          </Link>
+        </Button>
+      </div>
+    </section>
   );
 }
 

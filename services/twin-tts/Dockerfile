@@ -1,9 +1,9 @@
-# Anchor Digital Twin TTS (XTTS-v2) for the Dell Pro Max with NVIDIA GB10 (aarch64, CUDA 13).
+# Anchor Digital Twin TTS (Sesame CSM-1B or XTTS-v2) for the Dell Pro Max with NVIDIA GB10 (aarch64, CUDA 13).
 # Also builds on x86_64 + NVIDIA. Run with GPU access: see README.md.
 FROM python:3.12-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
-    TWIN_HOST=0.0.0.0 TWIN_PORT=8020 \
+    TWIN_HOST=0.0.0.0 TWIN_PORT=8020 TWIN_ENGINE=csm \
     HF_HOME=/models TTS_HOME=/models XDG_DATA_HOME=/models
 
 # Matching torch/torchaudio pair from PyTorch's CUDA 13 index (aarch64 + x86_64 wheels).

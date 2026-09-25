@@ -33,6 +33,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { api, type CheckinResult, type PatientDetail, type VoiceState } from "@/lib/client/api";
+import { OUTBOUND_OPENER } from "@/lib/call/summary";
 import { SAMPLE_UTTERANCES, SCENARIO_DEFAULT_SAMPLE } from "@/lib/data/seed";
 import { cn } from "@/lib/utils";
 
@@ -51,7 +52,7 @@ const STAGE_PLACEHOLDERS = [
   "Route",
 ];
 
-const OUTBOUND_OPENER = "Hey, it's me. How'd today go with the plan?";
+
 
 export function CheckinFlow({
   patientId,

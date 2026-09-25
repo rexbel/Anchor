@@ -1,7 +1,7 @@
 import { handle } from "@/lib/http/respond";
 import { getStore } from "@/lib/store";
 import { ToolError } from "@/lib/tools";
-import { CONSENT_STATEMENT, TWIN_LIMITS, enroll_twin_voice } from "@/lib/voice/twin";
+import { CONSENT_STATEMENT, READING_PASSAGE, TWIN_LIMITS, enroll_twin_voice } from "@/lib/voice/twin";
 
 /** GET /api/voices?patientId=… → the active Digital Twin profile (never the audio). */
 export async function GET(request: Request) {
@@ -9,11 +9,11 @@ export async function GET(request: Request) {
     const patientId = new URL(request.url).searchParams.get("patientId");
     if (!patientId) throw new ToolError("patientId is required.", 400);
     const profile = await (await getStore()).getActiveVoiceProfile(patientId);
-    return { profile, consentStatement: CONSENT_STATEMENT, limits: TWIN_LIMITS };
+    return { profile, consentStatement: CONSENT_STATEMENT, readingPassage: READING_PASSAGE, limits: TWIN_LIMITS };
   });
 }
 
-/** POST multipart: patientId, audio (16-bit PCM WAV), consentName, consent=true. */
+/** POST multipart: patientId, audio (16-bit PCM WAV), consentName, consent=true, transcript (optional, exact words spoken). */
 export async function POST(request: Request) {
   return handle(async () => {
     const form = await request.formData().catch(() => {
@@ -26,6 +26,7 @@ export async function POST(request: Request) {
       patientId: String(form.get("patientId") ?? ""),
       consentName: String(form.get("consentName") ?? ""),
       consent: form.get("consent") === "true",
+      transcript: typeof form.get("transcript") === "string" ? String(form.get("transcript")) : undefined,
       wav: new Uint8Array(await audio.arrayBuffer()),
     });
   });

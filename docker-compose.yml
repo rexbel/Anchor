@@ -14,6 +14,11 @@ services:
       ANCHOR_TTS_VOICE: ${ANCHOR_TTS_VOICE:-af_heart}
       # Set by the "twin" profile below; empty means no Digital Twin cloning.
       ANCHOR_TWIN_TTS_URL: ${ANCHOR_TWIN_TTS_URL:-}
+      # Optional demo voice: a consented reference mounted on the box (see README).
+      ANCHOR_DEMO_TWIN_WAV: ${ANCHOR_DEMO_TWIN_WAV:-}
+      ANCHOR_DEMO_TWIN_TEXT: ${ANCHOR_DEMO_TWIN_TEXT:-}
+      ANCHOR_DEMO_TWIN_PATIENT: ${ANCHOR_DEMO_TWIN_PATIENT:-}
+      ANCHOR_DEMO_TWIN_CONSENTED_BY: ${ANCHOR_DEMO_TWIN_CONSENTED_BY:-}
       OPENCLAW_HOOK_URL: ${OPENCLAW_HOOK_URL:-}
       OPENCLAW_HOOK_TOKEN: ${OPENCLAW_HOOK_TOKEN:-}
       ANCHOR_DEMO_MODE: ${ANCHOR_DEMO_MODE:-true}
@@ -35,12 +40,18 @@ services:
       retries: 20
     restart: unless-stopped
 
-  # Digital Twin voice cloning (XTTS-v2). Opt in:
-  #   COQUI_TOS_AGREED=1 ANCHOR_TWIN_TTS_URL=http://twin-tts:8020/twin docker compose --profile twin up -d --build
+  # Digital Twin voice cloning. Opt in:
+  #   ANCHOR_TWIN_TTS_URL=http://twin-tts:8020/twin docker compose --profile twin up -d --build
+  # Default engine: Sesame CSM-1B (Apache-2.0). Put the weights in the twin-models
+  # volume and set TWIN_CSM_MODEL=/models/sesame-csm-1b, or set HF_TOKEN (the
+  # model is gated on Hugging Face). TWIN_ENGINE=xtts also needs COQUI_TOS_AGREED=1.
   twin-tts:
     profiles: ["twin"]
     build: ./services/twin-tts
     environment:
+      TWIN_ENGINE: ${TWIN_ENGINE:-csm}
+      TWIN_CSM_MODEL: ${TWIN_CSM_MODEL:-sesame/csm-1b}
+      HF_TOKEN: ${HF_TOKEN:-}
       COQUI_TOS_AGREED: ${COQUI_TOS_AGREED:-}
       TWIN_HOST: 0.0.0.0
     ports:

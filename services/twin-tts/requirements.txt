@@ -1,3 +1,9 @@
 # PyTorch comes from the CUDA 13 index (see Dockerfile); install it first.
-coqui-tts==0.27.5
 numpy>=1.26
+# csm engine (Sesame CSM-1B, Apache-2.0)
+transformers>=4.57
+accelerate>=1.0
+sentencepiece>=0.2
+soundfile>=0.12
+# xtts engine (Coqui XTTS-v2, non-commercial CPML)
+coqui-tts==0.27.5

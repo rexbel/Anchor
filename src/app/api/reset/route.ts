@@ -1,6 +1,7 @@
 import { handle } from "@/lib/http/respond";
 import { getStore } from "@/lib/store";
 import { ToolError } from "@/lib/tools";
+import { seedDemoTwin } from "@/lib/voice/demo-twin";
 
 export async function POST() {
   return handle(async () => {
@@ -15,6 +16,8 @@ export async function POST() {
       detail: "Demo data reset to the seeded scenarios.",
       escalationFlag: false,
     });
+    // The reset clears voices too; put the deployment's consented demo voice back.
+    await seedDemoTwin(store);
     return { ok: true };
   });
 }

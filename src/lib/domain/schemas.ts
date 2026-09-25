@@ -244,11 +244,15 @@ export const VoiceProfileSchema = z.object({
     statement: z.string(),
     attestedAt: z.string(),
   }),
+  /** "enrolled" in the app, or "deployment" (seeded from a consented reference mounted on the box). */
+  source: z.enum(["enrolled", "deployment"]).optional(),
   sample: z.object({
     mimeType: z.literal("audio/wav"),
     bytes: z.number().int(),
     durationSec: z.number(),
     sampleRate: z.number().int(),
+    /** Exact words spoken in the sample. Cloning models like Sesame CSM-1B need it. */
+    transcript: z.string().max(2000).optional(),
   }),
   selfHearing: SelfHearingSchema,
   createdAt: z.string(),

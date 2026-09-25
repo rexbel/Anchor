@@ -18,12 +18,28 @@ import { parseWav } from "./wav";
 
 export const TWIN_LIMITS = { minSec: 5, maxSec: 60, maxBytes: 4 * 1024 * 1024 };
 
+/**
+ * What the patient reads when recording. Kept to about 8 seconds so it also
+ * suits Sesame CSM-1B, which conditions on 3 to 10 seconds of reference audio
+ * plus its exact transcript.
+ */
+export const READING_PASSAGE =
+  "Most mornings I make coffee, check the weather, and take the long way to work. When the day gets hard, I slow down and take a breath.";
+
 export const CONSENT_STATEMENT =
   "I am recording my own voice, and I agree that Anchor may use this recording to create a synthetic copy of my voice for my check-ins. I can withdraw this consent at any time, which deletes the recording.";
 
 export async function enroll_twin_voice(
   store: AnchorStore,
-  input: { patientId: string; wav: Uint8Array; consentName: string; consent: boolean },
+  input: {
+    patientId: string;
+    wav: Uint8Array;
+    consentName: string;
+    consent: boolean;
+    transcript?: string;
+    source?: VoiceProfile["source"];
+    minSec?: number;
+  },
   now = new Date(),
 ): Promise<VoiceProfile> {
   const consentName = input.consentName.trim();
@@ -36,9 +52,10 @@ export async function enroll_twin_voice(
   }
   const info = parseWav(input.wav);
   if (!info) throw new ToolError("The recording must be a PCM WAV file.", 400);
-  if (info.durationSec < TWIN_LIMITS.minSec || info.durationSec > TWIN_LIMITS.maxSec) {
+  const minSec = input.minSec ?? TWIN_LIMITS.minSec;
+  if (info.durationSec < minSec || info.durationSec > TWIN_LIMITS.maxSec) {
     throw new ToolError(
-      `The recording must be ${TWIN_LIMITS.minSec} to ${TWIN_LIMITS.maxSec} seconds long (got ${info.durationSec.toFixed(1)} s).`,
+      `The recording must be ${minSec} to ${TWIN_LIMITS.maxSec} seconds long (got ${info.durationSec.toFixed(1)} s).`,
       400,
     );
   }
@@ -47,16 +64,19 @@ export async function enroll_twin_voice(
   const previous = await store.getActiveVoiceProfile(input.patientId);
   if (previous) await store.revokeVoiceProfile(previous.id, now.toISOString());
 
+  const transcript = input.transcript?.trim().replace(/\s+/g, " ").slice(0, 2000) || undefined;
   const profile: VoiceProfile = {
     id: newId("voice"),
     patientId: input.patientId,
     status: "active",
+    source: input.source ?? "enrolled",
     consent: { consentedBy: consentName, statement: CONSENT_STATEMENT, attestedAt: now.toISOString() },
     sample: {
       mimeType: "audio/wav",
       bytes: input.wav.byteLength,
       durationSec: Math.round(info.durationSec * 10) / 10,
       sampleRate: info.sampleRate,
+      transcript,
     },
     selfHearing: { ...DEFAULT_SELF_HEARING },
     createdAt: now.toISOString(),
@@ -65,7 +85,7 @@ export async function enroll_twin_voice(
   await store.appendAudit({
     patientId: input.patientId,
     kind: "voice_enrolled",
-    detail: `Digital Twin voice enrolled (${profile.id}, ${profile.sample.durationSec} s sample). Consent attested by "${consentName}".${previous ? ` Replaced ${previous.id}; its sample was deleted.` : ""}`,
+    detail: `Digital Twin voice ${profile.source === "deployment" ? "seeded from the deployment's consented reference" : "enrolled"} (${profile.id}, ${profile.sample.durationSec} s sample${transcript ? ", with transcript" : ""}). Consent attested by "${consentName}".${previous ? ` Replaced ${previous.id}; its sample was deleted.` : ""}`,
     escalationFlag: false,
   });
   return profile;
@@ -150,6 +170,7 @@ export async function synthesize(
                 text: input.text,
                 language: "en",
                 speaker_wav: Buffer.from(sample).toString("base64"),
+                ...(profile.sample.transcript ? { speaker_text: profile.sample.transcript } : {}),
               }),
             },
             20000,

@@ -14,18 +14,14 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { api, type PatientDetail, type VoiceState } from "@/lib/client/api";
 import type { SelfHearing } from "@/lib/domain/schemas";
 import { encodeWav } from "@/lib/voice/wav";
 
-const READING_PASSAGE =
-  "Most mornings I make coffee, check the weather, and take the long way to work. " +
-  "I like quiet streets, a good song on the radio, and talking with people I trust. " +
-  "When the day gets hard, I slow down, take a breath, and remember what I'm working toward.";
-
 const PREVIEW_LINE = "Hey, it's me. Checking in like we planned. How did today go?";
 
-type Pending = { wav: Uint8Array; seconds: number; url: string };
+type Pending = { wav: Uint8Array; seconds: number; url: string; origin: "recorded" | "uploaded" };
 
 export function TwinVoice({ patientId }: { patientId: string }) {
   const [detail, setDetail] = useState<PatientDetail | null>(null);
@@ -97,12 +93,13 @@ function EnrollCard({ patientId, voice, onEnrolled }: { patientId: string; voice
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const [transcript, setTranscript] = useState("");
   const recorderRef = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { minSec, maxSec } = voice.limits;
 
   const accept = useCallback(
-    async (blob: Blob) => {
+    async (blob: Blob, origin: Pending["origin"]) => {
       setProblem(null);
       try {
         const { wav, seconds } = await toReferenceWav(blob, encodeWav);
@@ -112,7 +109,7 @@ function EnrollCard({ patientId, voice, onEnrolled }: { patientId: string; voice
         }
         setPending((prev) => {
           if (prev) URL.revokeObjectURL(prev.url);
-          return { wav, seconds, url: URL.createObjectURL(new Blob([wav as BlobPart], { type: "audio/wav" })) };
+          return { wav, seconds, origin, url: URL.createObjectURL(new Blob([wav as BlobPart], { type: "audio/wav" })) };
         });
       } catch {
         setProblem("That file couldn't be read as audio. Try a WAV, MP3, or M4A recording.");
@@ -130,7 +127,7 @@ function EnrollCard({ patientId, voice, onEnrolled }: { patientId: string; voice
       rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
       rec.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
-        void accept(new Blob(chunks, { type: rec.mimeType }));
+        void accept(new Blob(chunks, { type: rec.mimeType }), "recorded");
       };
       recorderRef.current = rec;
       rec.start();
@@ -164,7 +161,13 @@ function EnrollCard({ patientId, voice, onEnrolled }: { patientId: string; voice
     setBusy(true);
     setProblem(null);
     try {
-      await api.enrollVoice({ patientId, wav: pending.wav, consentName });
+      await api.enrollVoice({
+        patientId,
+        wav: pending.wav,
+        consentName,
+        // A recording of the passage has a known transcript; an upload only if the patient typed one.
+        transcript: pending.origin === "recorded" ? voice.readingPassage : transcript,
+      });
       toast.success("Digital Twin voice created.");
       onEnrolled();
     } catch (e) {
@@ -183,11 +186,11 @@ function EnrollCard({ patientId, voice, onEnrolled }: { patientId: string; voice
           <Mic className="size-5" /> Record a reference sample
         </CardTitle>
         <CardDescription>
-          {minSec} to {maxSec} seconds in a quiet room. Reading the passage below out loud, at a normal pace, takes about 20 seconds.
+          Read the passage below out loud, at a normal pace, in a quiet room. It takes about 8 seconds ({minSec} to {maxSec} s accepted).
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
-        <blockquote className="rounded-lg bg-muted p-4 text-base leading-relaxed">{READING_PASSAGE}</blockquote>
+        <blockquote className="rounded-lg bg-muted p-4 text-base leading-relaxed">{voice.readingPassage}</blockquote>
 
         <div className="flex flex-wrap items-center gap-3">
           {recording ? (
@@ -207,7 +210,7 @@ function EnrollCard({ patientId, voice, onEnrolled }: { patientId: string; voice
               className="sr-only"
               onChange={(e) => {
                 const f = e.target.files?.[0];
-                if (f) void accept(f);
+                if (f) void accept(f, "uploaded");
                 e.target.value = "";
               }}
             />
@@ -219,6 +222,19 @@ function EnrollCard({ patientId, voice, onEnrolled }: { patientId: string; voice
             </div>
           ) : null}
         </div>
+
+        {pending?.origin === "uploaded" ? (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="transcript">Exact words spoken in the file (optional)</Label>
+            <Textarea
+              id="transcript"
+              value={transcript}
+              onChange={(e) => setTranscript(e.target.value)}
+              rows={3}
+              placeholder="Some cloning models, like Sesame CSM-1B, need the transcript to match the voice closely."
+            />
+          </div>
+        ) : null}
 
         <fieldset className="flex flex-col gap-3 rounded-lg border p-4">
           <legend className="px-1 text-sm font-medium">Consent</legend>
@@ -308,7 +324,8 @@ function ProfileCard({ patientId, voice, onChange }: { patientId: string; voice:
             <ShieldCheck className="size-5" /> Active Digital Twin
           </CardTitle>
           <CardDescription>
-            Consent given by <span className="font-medium text-foreground">{profile.consent.consentedBy}</span> on{" "}
+            Consent {profile.source === "deployment" ? "attested at deployment for" : "given by"}{" "}
+            <span className="font-medium text-foreground">{profile.consent.consentedBy}</span> on{" "}
             {new Date(profile.consent.attestedAt).toLocaleString()}.
           </CardDescription>
         </CardHeader>
@@ -316,6 +333,8 @@ function ProfileCard({ patientId, voice, onChange }: { patientId: string; voice:
           <div className="flex flex-wrap gap-1.5">
             <Badge variant="outline">{profile.sample.durationSec} s reference sample</Badge>
             <Badge variant="outline">{(profile.sample.sampleRate / 1000).toFixed(2)} kHz WAV</Badge>
+            <Badge variant="outline">{profile.sample.transcript ? "Transcript on file" : "No transcript"}</Badge>
+            {profile.source === "deployment" ? <Badge variant="brand">Seeded from the deployment</Badge> : null}
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => (sampleMode === "raw" ? stopSample() : void playSample("raw"))}>

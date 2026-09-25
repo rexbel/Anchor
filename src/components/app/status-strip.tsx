@@ -57,6 +57,16 @@ export function StatusStrip({ className }: { className?: string }) {
         title={status.tts.engine === "kokoro" ? "Voice rendered by the local Kokoro server." : "No Kokoro server configured. The browser speaks instead."}
       />
       <Pill
+        ok={status.twin.cloning === "configured"}
+        icon={Mic}
+        label={status.twin.cloning === "configured" ? "Digital Twin cloning" : "No cloning server"}
+        title={
+          status.twin.cloning === "configured"
+            ? "Enrolled patients hear Anchor in their own cloned voice."
+            : "Set ANCHOR_TWIN_TTS_URL to the Digital Twin TTS on the GB10. Until then, enrolled patients hear the standard voice."
+        }
+      />
+      <Pill
         ok={status.openclaw.hook === "configured"}
         icon={Waypoints}
         label={status.openclaw.hook === "configured" ? "OpenClaw hook" : "Local clinician queue"}

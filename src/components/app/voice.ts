@@ -20,7 +20,32 @@ export function useSpeaker(options: { patientId?: string; selfHearing?: SelfHear
   const [speaking, setSpeaking] = useState(false);
   const [engine, setEngine] = useState<SpeakEngine | null>(null);
   const playbackRef = useRef<Playback | null>(null);
+  const cacheRef = useRef(new Map<string, { blob: Blob; engine: SpeakEngine }>());
   const { patientId, selfHearing } = options;
+
+  /** Render a line ahead of time (e.g. the call opener) so playback starts instantly. */
+  const prefetch = useCallback(
+    async (text: string): Promise<SpeakEngine> => {
+      const hit = cacheRef.current.get(text);
+      if (hit) return hit.engine;
+      try {
+        const res = await fetch("/api/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, patientId }),
+        });
+        if (res.ok && res.headers.get("Content-Type")?.startsWith("audio/")) {
+          const engine: SpeakEngine = res.headers.get("X-Anchor-Voice-Engine") === "twin" ? "twin" : "kokoro";
+          cacheRef.current.set(text, { blob: await res.blob(), engine });
+          return engine;
+        }
+      } catch {
+        // nothing cached; speak() will retry and fall back
+      }
+      return "browser";
+    },
+    [patientId],
+  );
 
   const stop = useCallback(() => {
     playbackRef.current?.stop();
@@ -33,6 +58,24 @@ export function useSpeaker(options: { patientId?: string; selfHearing?: SelfHear
     async (text: string): Promise<SpeakEngine> => {
       stop();
       setSpeaking(true);
+      const cached = cacheRef.current.get(text);
+      if (cached) {
+        cacheRef.current.delete(text);
+        try {
+          const playback = await playProcessed(
+            cached.blob,
+            selfHearing ?? { enabled: false, lowShelfDb: 0, highShelfDb: 0, reverbMix: 0 },
+          );
+          playbackRef.current = playback;
+          void playback.ended.then(() => {
+            if (playbackRef.current === playback) setSpeaking(false);
+          });
+          setEngine(cached.engine);
+          return cached.engine;
+        } catch {
+          // fall through to a fresh render
+        }
+      }
       try {
         const res = await fetch("/api/tts", {
           method: "POST",
@@ -72,7 +115,7 @@ export function useSpeaker(options: { patientId?: string; selfHearing?: SelfHear
   );
 
   useEffect(() => stop, [stop]);
-  return { speak, stop, speaking, engine };
+  return { speak, stop, prefetch, speaking, engine };
 }
 
 type RecognitionLike = {

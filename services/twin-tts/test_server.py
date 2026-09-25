@@ -90,6 +90,11 @@ class TwinServerTest(unittest.TestCase):
     def test_rejects_non_json(self):
         self.assertEqual(self.post(None, raw=b"text=hi")[0], 400)
 
+    def test_speaker_text_must_be_a_string(self):
+        good = base64.b64encode(wav_bytes()).decode()
+        self.assertEqual(self.post({"text": "hi", "speaker_wav": good, "speaker_text": 42})[0], 400)
+        self.assertEqual(self.post({"text": "hi", "speaker_wav": good, "speaker_text": "I said this."})[0], 200)
+
     def test_decode_wav_downmixes_stereo(self):
         buf = io.BytesIO()
         with wave.open(buf, "wb") as w:
@@ -100,6 +105,40 @@ class TwinServerTest(unittest.TestCase):
         audio, rate = server.decode_wav(buf.getvalue())
         self.assertEqual((rate, audio.shape[0]), (16000, 100))
         self.assertAlmostEqual(float(audio[0]), 0.25, places=3)
+
+
+class CsmRulesTest(unittest.TestCase):
+    """The csm engine's request rules, exercised through the stub-csm engine (no model)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.httpd = server.ThreadingHTTPServer(("127.0.0.1", 0), server.make_handler(server.StubEngine(require_transcript=True)))
+        cls.base = f"http://127.0.0.1:{cls.httpd.server_address[1]}"
+        threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.httpd.shutdown()
+
+    post = TwinServerTest.post
+
+    def test_requires_transcript(self):
+        status, _, body = self.post({"text": "hi", "speaker_wav": base64.b64encode(wav_bytes(8)).decode()})
+        self.assertEqual(status, 400)
+        self.assertIn("speaker_text", json.loads(body)["error"])
+
+    def test_reference_length_window(self):
+        for seconds, expected in [(2.0, 400), (8.0, 200), (13.0, 400)]:
+            with self.subTest(seconds=seconds):
+                payload = {"text": "hi", "speaker_wav": base64.b64encode(wav_bytes(seconds)).decode(), "speaker_text": "Most mornings I make coffee."}
+                self.assertEqual(self.post(payload)[0], expected)
+
+    def test_split_for_csm(self):
+        text = "First sentence. Second one here! " + "word " * 120
+        chunks = server.split_for_csm(text, limit=120)
+        self.assertTrue(all(0 < len(c) <= 120 for c in chunks))
+        self.assertEqual(" ".join(chunks).split(), text.split())
+        self.assertEqual(server.split_for_csm("Short. Also short."), ["Short. Also short."])
 
 
 if __name__ == "__main__":

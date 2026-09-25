@@ -11,7 +11,7 @@ Anchor is local-first: the app, MongoDB, the reasoning model, the voice, and Ope
 | Reasoning model | any OpenAI-compatible server (vLLM, Ollama, NIM) | `ANCHOR_LLM_BASE_URL`, `ANCHOR_LLM_MODEL` |
 | Kokoro TTS | an OpenAI-compatible `/audio/speech` server such as Kokoro-FastAPI | `ANCHOR_TTS_BASE_URL`, `ANCHOR_TTS_VOICE` |
 | OpenClaw | your OpenClaw hook endpoint | `OPENCLAW_HOOK_URL`, `OPENCLAW_HOOK_TOKEN` |
-| Digital Twin TTS (optional) | XTTS-v2 in `services/twin-tts`, port 8020 | `ANCHOR_TWIN_TTS_URL` (compose profile `twin`) |
+| Digital Twin TTS (optional) | Sesame CSM-1B (or XTTS-v2) in `services/twin-tts`, port 8020 | `ANCHOR_TWIN_TTS_URL` (compose profile `twin`) |
 
 The default model id is `qwen-3.8-27b`, the team's whiteboard choice. Set `ANCHOR_LLM_MODEL` to the exact name your server reports at `/v1/models`. Nemotron served through the same kind of endpoint works the same way.
 
@@ -25,11 +25,13 @@ open http://localhost:3000
 
 From inside the container, services on the host are at `http://host.docker.internal:<port>`.
 
-To add Digital Twin voice cloning, see [`services/twin-tts/README.md`](../services/twin-tts/README.md). XTTS-v2 is non-commercial, so this is opt-in:
+To add Digital Twin voice cloning, see [`services/twin-tts/README.md`](../services/twin-tts/README.md). It is opt-in:
 
 ```bash
-COQUI_TOS_AGREED=1 ANCHOR_TWIN_TTS_URL=http://twin-tts:8020/twin docker compose --profile twin up -d --build
+ANCHOR_TWIN_TTS_URL=http://twin-tts:8020/twin HF_TOKEN=... docker compose --profile twin up -d --build
 ```
+
+To run the demo in the hackathon's consented voice, mount the T7 bundle into the `anchor` container (for example with a `docker-compose.override.yml` that adds `- /media/dell/T7/hackathon-2026-08-22:/bundle:ro` under `volumes`), then set `ANCHOR_DEMO_TWIN_WAV=/bundle/<path>/self_ref.wav`, `ANCHOR_DEMO_TWIN_TEXT=/bundle/<path>/self_ref.txt`, `ANCHOR_DEMO_TWIN_PATIENT`, and `ANCHOR_DEMO_TWIN_CONSENTED_BY`.
 
 ## 3. Check it
 
