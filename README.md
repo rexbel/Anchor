@@ -100,7 +100,7 @@ Open **Create the Digital Twin voice** from any check-in (`/twin/[patientId]`). 
 
 Speech then comes from the best engine available: the Digital Twin (`ANCHOR_TWIN_TTS_URL`), then Kokoro, then the browser. The `X-Anchor-Voice-Engine` response header says which one spoke.
 
-**Cloning server contract.** `POST $ANCHOR_TWIN_TTS_URL` with JSON `{ "text": string, "language": "en", "speaker_wav": <base64 WAV> }`, answered with audio (`audio/wav` or `audio/mpeg`). XTTS-v2 takes the sample as its `speaker_wav`. Most XTTS servers expect a file path instead, so put a small shim in front of yours. `npm run mock:gb10` serves a stand-in at `/twin`.
+**Cloning server contract.** `POST $ANCHOR_TWIN_TTS_URL` with JSON `{ "text": string, "language": "en", "speaker_wav": <base64 WAV> }`, answered with audio (`audio/wav` or `audio/mpeg`). XTTS-v2 takes the sample as its `speaker_wav`. [`services/twin-tts`](services/twin-tts/README.md) is a ready XTTS-v2 server for the GB10 that implements this contract (`docker compose --profile twin`). XTTS-v2's weights are non-commercial. `npm run mock:gb10` serves a stand-in at `/twin`.
 
 **As they hear themselves.** People hear their own voice partly through bone conduction, so it sounds fuller and lower to them than a recording does. Anchor can play rendered speech through a low-shelf boost, a gentle high-shelf cut, and a short, quiet reverb, all adjustable per patient. The processing runs in the browser (Web Audio), so it applies to Digital Twin and Kokoro audio but not to the browser's built-in voice.
 

@@ -12,6 +12,8 @@ services:
       ANCHOR_LLM_MODEL: ${ANCHOR_LLM_MODEL:-qwen-3.8-27b}
       ANCHOR_TTS_BASE_URL: ${ANCHOR_TTS_BASE_URL:-}
       ANCHOR_TTS_VOICE: ${ANCHOR_TTS_VOICE:-af_heart}
+      # Set by the "twin" profile below; empty means no Digital Twin cloning.
+      ANCHOR_TWIN_TTS_URL: ${ANCHOR_TWIN_TTS_URL:-}
       OPENCLAW_HOOK_URL: ${OPENCLAW_HOOK_URL:-}
       OPENCLAW_HOOK_TOKEN: ${OPENCLAW_HOOK_TOKEN:-}
       ANCHOR_DEMO_MODE: ${ANCHOR_DEMO_MODE:-true}
@@ -33,5 +35,27 @@ services:
       retries: 20
     restart: unless-stopped
 
+  # Digital Twin voice cloning (XTTS-v2). Opt in:
+  #   COQUI_TOS_AGREED=1 ANCHOR_TWIN_TTS_URL=http://twin-tts:8020/twin docker compose --profile twin up -d --build
+  twin-tts:
+    profiles: ["twin"]
+    build: ./services/twin-tts
+    environment:
+      COQUI_TOS_AGREED: ${COQUI_TOS_AGREED:-}
+      TWIN_HOST: 0.0.0.0
+    ports:
+      - "127.0.0.1:8020:8020"
+    volumes:
+      - twin-models:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
 volumes:
   anchor-mongo:
+  twin-models:
