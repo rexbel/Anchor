@@ -92,9 +92,6 @@ export function Dashboard() {
     <div className="flex flex-col gap-10">
       <section className="grid gap-6 lg:grid-cols-[1.4fr_1fr] lg:items-end">
         <div className="flex flex-col gap-4">
-          <Badge variant="outline" className="gap-1.5">
-            <span className="size-1.5 rounded-full bg-brand" aria-hidden /> Dell Pro Max with NVIDIA GB10 · 100% local
-          </Badge>
           <h1 className="text-balance text-4xl font-bold tracking-tight sm:text-5xl">
             Your agentic life alert. Care gaps closed locally.
           </h1>
