@@ -211,7 +211,7 @@ export function LiveCall({ patientId, initialDirection }: { patientId: string; i
 
   return (
     <div className="flex flex-col gap-6">
-      <Link href="/" className="flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+      <Link href="/" className="-my-2 flex w-fit items-center gap-1 py-2 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" /> Dashboard
       </Link>
 
@@ -251,7 +251,7 @@ export function LiveCall({ patientId, initialDirection }: { patientId: string; i
                     aria-checked={direction === d}
                     onClick={() => setDirection(d)}
                     className={cn(
-                      "flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-brand",
+                      "flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-sm sm:min-h-0 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-brand",
                       direction === d ? "bg-white text-[#111]" : "text-white/70 hover:text-white",
                     )}
                   >

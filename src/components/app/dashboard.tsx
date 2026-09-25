@@ -214,7 +214,7 @@ export function Dashboard() {
                         </div>
                         <Link
                           href={`/checkin/${p!.patientId}?direction=${meta.direction}`}
-                          className="flex items-center gap-1 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                          className="-my-2 flex items-center gap-1 py-2 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
                         >
                           <ListChecks className="size-3.5" aria-hidden /> Step-by-step pipeline view
                         </Link>
@@ -240,8 +240,8 @@ export function Dashboard() {
             <TableHeader>
               <TableRow>
                 <TableHead className="pl-4">Patient</TableHead>
-                <TableHead>Due</TableHead>
-                <TableHead>Cadence</TableHead>
+                <TableHead className="hidden sm:table-cell">Due</TableHead>
+                <TableHead className="hidden sm:table-cell">Cadence</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="pr-4 text-right">Action</TableHead>
               </TableRow>
@@ -262,9 +262,14 @@ export function Dashboard() {
               ) : (
                 queue.map((row) => (
                   <TableRow key={row.id}>
-                    <TableCell className="pl-4 font-medium">{row.displayName}</TableCell>
-                    <TableCell>{timeUntil(row.dueAt)}</TableCell>
-                    <TableCell className="capitalize">{row.cadence.replaceAll("-", " ")}</TableCell>
+                    <TableCell className="pl-4 font-medium">
+                      {row.displayName}
+                      <span className="block text-xs font-normal text-muted-foreground sm:hidden">
+                        {timeUntil(row.dueAt)}
+                      </span>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">{timeUntil(row.dueAt)}</TableCell>
+                    <TableCell className="hidden capitalize sm:table-cell">{row.cadence.replaceAll("-", " ")}</TableCell>
                     <TableCell>
                       <QueueStatus status={row.status} />
                     </TableCell>
@@ -326,7 +331,7 @@ function TwinHero({ patient, loading }: { patient: PatientSummary | null; loadin
         </p>
       </div>
       <div className="flex flex-col gap-3">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <Button asChild size="lg" variant="brand" className="rounded-full">
             <Link href={`/call/${patient.patientId}?direction=outbound`}>
               <PhoneOutgoing /> Anchor calls {first}

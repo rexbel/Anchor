@@ -72,7 +72,7 @@ export function AuditLog() {
             id="patient-filter"
             value={patientId}
             onChange={(e) => setPatientId(e.target.value)}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            className="h-11 rounded-md border border-input bg-background px-3 text-base sm:h-9 sm:text-sm shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
           >
             <option value="">All patients</option>
             {patients.map((p) => (

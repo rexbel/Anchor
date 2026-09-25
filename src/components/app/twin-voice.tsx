@@ -56,7 +56,7 @@ export function TwinVoice({ patientId }: { patientId: string }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <Link href={`/checkin/${patientId}`} className="flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+      <Link href={`/checkin/${patientId}`} className="-my-2 flex w-fit items-center gap-1 py-2 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" /> Back to check-in
       </Link>
       <div className="flex flex-col gap-2">

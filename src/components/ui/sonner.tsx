@@ -7,6 +7,8 @@ function Toaster(props: ToasterProps) {
     <Sonner
       className="toaster group"
       position="bottom-right"
+      // Clear the phone-only bottom tab bar (h-14) in the site header.
+      mobileOffset={{ bottom: "calc(4.5rem + env(safe-area-inset-bottom))" }}
       style={
         {
           "--normal-bg": "var(--popover)",

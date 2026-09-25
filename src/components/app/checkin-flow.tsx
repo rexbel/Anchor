@@ -220,7 +220,7 @@ export function CheckinFlow({
                 </CardDescription>
                 <Link
                   href={`/twin/${patientId}`}
-                  className="flex w-fit items-center gap-1.5 text-sm font-medium underline-offset-4 hover:underline"
+                  className="-my-2 flex w-fit items-center gap-1.5 py-2 text-sm font-medium underline-offset-4 hover:underline"
                 >
                   <Headphones className="size-4" />
                   {twin ? "Digital Twin voice: active" : "Create the Digital Twin voice"}
@@ -307,7 +307,7 @@ export function CheckinFlow({
                         type="button"
                         onClick={() => setUtterance(s.text)}
                         className={cn(
-                          "inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs outline-none transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/60",
+                          "inline-flex min-h-10 cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs sm:min-h-0 sm:px-2.5 outline-none transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/60",
                           utterance === s.text && "border-foreground bg-accent",
                         )}
                       >
