@@ -1,0 +1,37 @@
+# Anchor on one box: the app plus MongoDB. The reasoning model, Kokoro, and
+# OpenClaw run as the GB10's own services; point the env vars below at them.
+services:
+  anchor:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      MONGODB_URI: mongodb://mongo:27017
+      MONGODB_DB: anchor
+      ANCHOR_LLM_BASE_URL: ${ANCHOR_LLM_BASE_URL:-}
+      ANCHOR_LLM_MODEL: ${ANCHOR_LLM_MODEL:-qwen-3.8-27b}
+      ANCHOR_TTS_BASE_URL: ${ANCHOR_TTS_BASE_URL:-}
+      ANCHOR_TTS_VOICE: ${ANCHOR_TTS_VOICE:-af_heart}
+      OPENCLAW_HOOK_URL: ${OPENCLAW_HOOK_URL:-}
+      OPENCLAW_HOOK_TOKEN: ${OPENCLAW_HOOK_TOKEN:-}
+      ANCHOR_DEMO_MODE: ${ANCHOR_DEMO_MODE:-true}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:8
+    volumes:
+      - anchor-mongo:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  anchor-mongo:
