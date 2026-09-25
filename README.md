@@ -90,8 +90,19 @@ All are optional. With none set, Anchor uses deterministic triage, the seeded me
 | `MONGODB_URI`, `MONGODB_DB` | System of record |
 | `ANCHOR_LLM_BASE_URL`, `ANCHOR_LLM_MODEL`, `ANCHOR_LLM_API_KEY`, `ANCHOR_LLM_TIMEOUT_MS` | Local reasoning model |
 | `ANCHOR_TTS_BASE_URL`, `ANCHOR_TTS_MODEL`, `ANCHOR_TTS_VOICE` | Kokoro voice |
+| `ANCHOR_TWIN_TTS_URL` | Voice-cloning TTS for the Digital Twin (see below) |
 | `OPENCLAW_HOOK_URL`, `OPENCLAW_HOOK_TOKEN` | Authenticated escalation handoff |
 | `ANCHOR_DEMO_MODE` | Set to `false` to disable the reset button |
+
+## Digital Twin voice
+
+Open **Create the Digital Twin voice** from any check-in (`/twin/[patientId]`). The patient reads a short passage (5 to 60 seconds), or uploads a recording, then reads a consent statement, ticks the box, and types their name. The browser converts the audio to 16-bit mono WAV at 22.05 kHz. Anchor stores the sample, audits the consent, and keeps one active twin per patient. **Withdraw consent** deletes the recording.
+
+Speech then comes from the best engine available: the Digital Twin (`ANCHOR_TWIN_TTS_URL`), then Kokoro, then the browser. The `X-Anchor-Voice-Engine` response header says which one spoke.
+
+**Cloning server contract.** `POST $ANCHOR_TWIN_TTS_URL` with JSON `{ "text": string, "language": "en", "speaker_wav": <base64 WAV> }`, answered with audio (`audio/wav` or `audio/mpeg`). XTTS-v2 takes the sample as its `speaker_wav`. Most XTTS servers expect a file path instead, so put a small shim in front of yours. `npm run mock:gb10` serves a stand-in at `/twin`.
+
+**As they hear themselves.** People hear their own voice partly through bone conduction, so it sounds fuller and lower to them than a recording does. Anchor can play rendered speech through a low-shelf boost, a gentle high-shelf cut, and a short, quiet reverb, all adjustable per patient. The processing runs in the browser (Web Audio), so it applies to Digital Twin and Kokoro audio but not to the browser's built-in voice.
 
 ## Demo scenarios
 
@@ -110,6 +121,7 @@ The check-in screen also offers the nine vetted lines from [`docs/triage-dialogu
 
 - Synthetic data only. Not a medical device, and no HIPAA compliance claim.
 - Calls are simulated in the browser; there's no telephony.
+- The Digital Twin needs a voice-cloning server you run yourself. Without one, check-ins use Kokoro or the browser voice. Voice samples are stored with the demo data and aren't encrypted at rest.
 - No authentication. The clinician name is typed in and written to the audit log.
 - Keyword triage is a floor, not a classifier. Without a model, anything unrecognized escalates, which is safe but noisy.
 - The MongoDB adapter is covered by integration tests in CI, not in the sandbox this was built in.

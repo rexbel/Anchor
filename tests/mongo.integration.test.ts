@@ -4,6 +4,8 @@ import { SAMPLE_UTTERANCES } from "@/lib/data/seed";
 import { runCheckin } from "@/lib/pipeline/checkin";
 import { MongoStore } from "@/lib/store/mongo";
 import { decide_gate } from "@/lib/tools";
+import { encodeWav } from "@/lib/voice/wav";
+import { enroll_twin_voice, revoke_twin_voice } from "@/lib/voice/twin";
 
 /**
  * Runs only when MONGODB_URI is set (CI starts a mongo service container).
@@ -50,5 +52,15 @@ suite("MongoStore integration", () => {
     expect((await store.getPlan("demo-patient-complex"))!.patternFlags).toHaveLength(0);
     await decide_gate(store, { id: result.gateRequest!.id, decision: "approved", clinician: "Dr. M. Alvarez" });
     expect((await store.getPlan("demo-patient-complex"))!.patternFlags).toHaveLength(1);
+  });
+
+  it("stores a Digital Twin sample as binary and deletes it on revoke", async () => {
+    const wav = encodeWav(new Float32Array(22050 * 8).fill(0.1), 22050);
+    const profile = await enroll_twin_voice(store, { patientId: "demo-patient-ideal", wav, consentName: "Jordan R.", consent: true });
+    expect((await store.getActiveVoiceProfile("demo-patient-ideal"))!.id).toBe(profile.id);
+    expect(Array.from((await store.getVoiceSample(profile.id))!.subarray(0, 4))).toEqual([82, 73, 70, 70]);
+    await revoke_twin_voice(store, profile.id);
+    expect(await store.getVoiceSample(profile.id)).toBeNull();
+    expect((await store.getVoiceProfile(profile.id))!.status).toBe("revoked");
   });
 });

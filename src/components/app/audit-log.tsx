@@ -23,6 +23,9 @@ const KIND_LABEL: Record<AuditRow["kind"], string> = {
   action_executed: "Action executed",
   escalation_resolved: "Escalation resolved",
   demo_reset: "Demo reset",
+  voice_enrolled: "Twin voice enrolled",
+  voice_updated: "Twin voice updated",
+  voice_revoked: "Twin voice revoked",
 };
 
 export function AuditLog() {

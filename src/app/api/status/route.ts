@@ -10,6 +10,7 @@ export async function GET() {
       store: { kind: store.kind, note },
       model: { name: modelDisplayName(), status: model },
       tts: { engine: aiConfig.ttsBaseUrl ? "kokoro" : "browser", voice: aiConfig.ttsVoice },
+      twin: { cloning: aiConfig.twinTtsUrl ? "configured" : "not_configured" },
       openclaw: { hook: aiConfig.openclawHookUrl ? "configured" : "local_queue" },
       demoMode: process.env.ANCHOR_DEMO_MODE !== "false",
     };

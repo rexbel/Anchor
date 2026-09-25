@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Circle,
   Database,
+  Headphones,
   Loader2,
   Mic,
   MicOff,
@@ -31,7 +32,7 @@ import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { api, type CheckinResult, type PatientDetail } from "@/lib/client/api";
+import { api, type CheckinResult, type PatientDetail, type VoiceState } from "@/lib/client/api";
 import { SAMPLE_UTTERANCES, SCENARIO_DEFAULT_SAMPLE } from "@/lib/data/seed";
 import { cn } from "@/lib/utils";
 
@@ -68,7 +69,14 @@ export function CheckinFlow({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(0);
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
-  const speaker = useSpeaker();
+  const [voice, setVoice] = useState<VoiceState | null>(null);
+  const [selfHearingOn, setSelfHearingOn] = useState<boolean | null>(null);
+  const twin = voice?.profile ?? null;
+  const selfHearing = useMemo(
+    () => (twin ? { ...twin.selfHearing, enabled: selfHearingOn ?? twin.selfHearing.enabled } : null),
+    [twin, selfHearingOn],
+  );
+  const speaker = useSpeaker({ patientId, selfHearing });
   const dictation = useDictation(useCallback((text: string) => setUtterance(text), []));
 
   const loadDetail = useCallback(async () => {
@@ -85,6 +93,10 @@ export function CheckinFlow({
 
   useEffect(() => {
     let cancelled = false;
+    void api
+      .voice(patientId)
+      .then((v) => !cancelled && setVoice(v))
+      .catch(() => undefined);
     // Initial fetch on mount; state is set after the request resolves.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadDetail().then((d) => {
@@ -93,7 +105,7 @@ export function CheckinFlow({
     return () => {
       cancelled = true;
     };
-  }, [loadDetail]);
+  }, [loadDetail, patientId]);
 
   // Reveal the real pipeline stages one at a time once they come back.
   useEffect(() => {
@@ -205,6 +217,13 @@ export function CheckinFlow({
                     ? "The patient calls Anchor. OpenClaw authenticates the call and hands it to the Digital Twin. The patient speaks first."
                     : "Anchor calls on the plan's cadence, in the Digital Twin voice, and opens with a clinician-approved line."}
                 </CardDescription>
+                <Link
+                  href={`/twin/${patientId}`}
+                  className="flex w-fit items-center gap-1.5 text-sm font-medium underline-offset-4 hover:underline"
+                >
+                  <Headphones className="size-4" />
+                  {twin ? "Digital Twin voice: active" : "Create the Digital Twin voice"}
+                </Link>
               </CardHeader>
               <CardContent className="flex flex-col gap-5">
                 <fieldset className="flex flex-col gap-2">
@@ -368,6 +387,8 @@ export function CheckinFlow({
               direction={direction}
               speaking={speaker.speaking}
               engine={speaker.engine}
+              selfHearing={twin ? (selfHearing?.enabled ?? false) : null}
+              onSelfHearing={setSelfHearingOn}
               onPlay={() => void speaker.speak(result.reply)}
               onStop={speaker.stop}
               onAgain={() => void again()}
@@ -393,6 +414,8 @@ function ResultView({
   direction,
   speaking,
   engine,
+  selfHearing,
+  onSelfHearing,
   onPlay,
   onStop,
   onAgain,
@@ -403,6 +426,8 @@ function ResultView({
   direction: "inbound" | "outbound";
   speaking: boolean;
   engine: string | null;
+  selfHearing: boolean | null;
+  onSelfHearing: (on: boolean) => void;
   onPlay: () => void;
   onStop: () => void;
   onAgain: () => void;
@@ -453,11 +478,33 @@ function ResultView({
               </Button>
             </div>
             <p className="mt-1 text-lg leading-relaxed">&ldquo;{result.reply}&rdquo;</p>
-            {engine ? (
-              <p className="mt-2 text-xs text-muted-foreground">
-                Voice: {engine === "kokoro" ? "Kokoro on the GB10" : engine === "browser" ? "browser fallback" : "unavailable"}
-              </p>
-            ) : null}
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+              {engine ? (
+                <p>
+                  Voice:{" "}
+                  {engine === "twin"
+                    ? "Digital Twin (cloned, with consent)"
+                    : engine === "kokoro"
+                      ? "Kokoro on the GB10"
+                      : engine === "browser"
+                        ? "browser fallback"
+                        : "unavailable"}
+                </p>
+              ) : (
+                <span />
+              )}
+              {selfHearing !== null ? (
+                <label className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    className="size-3.5 accent-brand"
+                    checked={selfHearing}
+                    onChange={(e) => onSelfHearing(e.target.checked)}
+                  />
+                  As they hear themselves
+                </label>
+              ) : null}
+            </div>
           </div>
         </CardContent>
       </Card>

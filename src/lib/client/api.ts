@@ -6,6 +6,8 @@ import type {
   GateRequest,
   RecoveryPlan,
   ReferenceLibraryEntry,
+  SelfHearing,
+  VoiceProfile,
 } from "@/lib/domain/schemas";
 import type { CheckinResult } from "@/lib/pipeline/checkin";
 import type { FhirSummary } from "@/lib/data/fhir";
@@ -14,6 +16,7 @@ export type Status = {
   store: { kind: "memory" | "mongodb"; note: string | null };
   model: { name: string; status: "reachable" | "unreachable" | "not_configured" };
   tts: { engine: "kokoro" | "browser"; voice: string };
+  twin: { cloning: "configured" | "not_configured" };
   openclaw: { hook: "configured" | "local_queue" };
   demoMode: boolean;
 };
@@ -45,6 +48,11 @@ export type Metrics = {
   gateDecided: number;
 };
 export type { CheckinResult };
+export type VoiceState = {
+  profile: VoiceProfile | null;
+  consentStatement: string;
+  limits: { minSec: number; maxSec: number; maxBytes: number };
+};
 
 export class ApiError extends Error {}
 
@@ -78,4 +86,19 @@ export const api = {
   audit: (patientId?: string) =>
     call<{ events: AuditRow[] }>(`/api/audit${patientId ? `?patientId=${encodeURIComponent(patientId)}` : ""}`),
   reset: () => call<{ ok: true }>("/api/reset", { method: "POST" }),
+  voice: (patientId: string) => call<VoiceState>(`/api/voices?patientId=${encodeURIComponent(patientId)}`),
+  enrollVoice: async (body: { patientId: string; wav: Uint8Array; consentName: string }) => {
+    const form = new FormData();
+    form.set("patientId", body.patientId);
+    form.set("consentName", body.consentName);
+    form.set("consent", "true");
+    form.set("audio", new Blob([body.wav as BlobPart], { type: "audio/wav" }), "reference.wav");
+    const res = await fetch("/api/voices", { method: "POST", body: form, cache: "no-store" });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError((json as { error?: string }).error ?? `Request failed (${res.status})`);
+    return json as VoiceProfile;
+  },
+  updateVoice: (id: string, patch: Partial<SelfHearing>) =>
+    call<VoiceProfile>(`/api/voices/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  revokeVoice: (id: string) => call<VoiceProfile>(`/api/voices/${id}`, { method: "DELETE" }),
 };

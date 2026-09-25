@@ -7,6 +7,7 @@ import type {
   RecoveryPlan,
   ReferenceCategory,
   ReferenceLibraryEntry,
+  VoiceProfile,
 } from "@/lib/domain/schemas";
 
 export type NewAuditEvent = Omit<AuditEvent, "id" | "seq" | "timestamp"> & { timestamp?: string };
@@ -47,6 +48,15 @@ export interface AnchorStore {
   createGateRequest(request: GateRequest): Promise<void>;
   updateGateRequest(id: string, patch: Partial<GateRequest>): Promise<GateRequest | null>;
   appendAudit(event: NewAuditEvent): Promise<AuditEvent>;
+
+  // Digital Twin voice. The WAV sample is stored apart from the profile so
+  // listing profiles never moves audio. Revoking deletes the sample.
+  getVoiceProfile(id: string): Promise<VoiceProfile | null>;
+  getActiveVoiceProfile(patientId: string): Promise<VoiceProfile | null>;
+  saveVoiceProfile(profile: VoiceProfile, sample: Uint8Array): Promise<void>;
+  updateVoiceProfile(id: string, patch: Partial<Pick<VoiceProfile, "selfHearing">>): Promise<VoiceProfile | null>;
+  getVoiceSample(id: string): Promise<Uint8Array | null>;
+  revokeVoiceProfile(id: string, at: string): Promise<VoiceProfile | null>;
 
   reset(now?: Date): Promise<void>;
 }

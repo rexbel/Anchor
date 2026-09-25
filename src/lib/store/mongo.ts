@@ -1,4 +1,4 @@
-import { MongoClient, type Collection, type Db, type Document } from "mongodb";
+import { Binary, MongoClient, type Collection, type Db, type Document } from "mongodb";
 
 import {
   AuditEventSchema,
@@ -7,6 +7,7 @@ import {
   GateRequestSchema,
   RecoveryPlanSchema,
   ReferenceLibraryEntrySchema,
+  VoiceProfileSchema,
   type AuditEvent,
   type CheckinQueueEntry,
   type CheckinRecord,
@@ -14,6 +15,7 @@ import {
   type GateRequest,
   type RecoveryPlan,
   type ReferenceLibraryEntry,
+  type VoiceProfile,
 } from "@/lib/domain/schemas";
 import {
   REFERENCE_LIBRARY,
@@ -95,6 +97,12 @@ export class MongoStore implements AnchorStore {
   private get audit() {
     return this.col<AuditEvent>("audit_log");
   }
+  private get voices() {
+    return this.col<VoiceProfile>("voice_profiles");
+  }
+  private get samples() {
+    return this.db.collection<{ _id: string; data: Binary }>("voice_samples");
+  }
   private get counters() {
     return this.db.collection<{ _id: string; value: number }>("counters");
   }
@@ -106,6 +114,7 @@ export class MongoStore implements AnchorStore {
       this.checkins.createIndex({ patientId: 1, at: -1 }),
       this.audit.createIndex({ patientId: 1, seq: -1 }),
       this.gate.createIndex({ status: 1, createdAt: -1 }),
+      this.voices.createIndex({ patientId: 1, status: 1 }),
     ]);
   }
 
@@ -227,9 +236,41 @@ export class MongoStore implements AnchorStore {
     return row;
   }
 
+  async getVoiceProfile(id: string) {
+    const doc = strip<VoiceProfile>(await this.voices.findOne({ id }));
+    return doc ? VoiceProfileSchema.parse(doc) : null;
+  }
+
+  async getActiveVoiceProfile(patientId: string) {
+    const doc = strip<VoiceProfile>(await this.voices.findOne({ patientId, status: "active" }));
+    return doc ? VoiceProfileSchema.parse(doc) : null;
+  }
+
+  async saveVoiceProfile(profile: VoiceProfile, sample: Uint8Array) {
+    // Sample first: a profile must never point at audio that isn't there.
+    await this.samples.insertOne({ _id: profile.id, data: new Binary(sample) }, { writeConcern: { j: true } });
+    await this.voices.insertOne({ ...profile, _id: profile.id }, { writeConcern: { j: true } });
+  }
+
+  async updateVoiceProfile(id: string, patch: Partial<Pick<VoiceProfile, "selfHearing">>) {
+    await this.voices.updateOne({ id }, { $set: patch });
+    return this.getVoiceProfile(id);
+  }
+
+  async getVoiceSample(id: string) {
+    const doc = await this.samples.findOne({ _id: id });
+    return doc ? new Uint8Array(doc.data.buffer) : null;
+  }
+
+  async revokeVoiceProfile(id: string, at: string) {
+    await this.voices.updateOne({ id }, { $set: { status: "revoked", revokedAt: at } }, { writeConcern: { j: true } });
+    await this.samples.deleteOne({ _id: id }, { writeConcern: { j: true } });
+    return this.getVoiceProfile(id);
+  }
+
   async reset(now: Date = new Date()) {
     await Promise.all(
-      ["recovery_plans", "reference_library", "checkin_queue", "checkins", "gate_requests", "audit_log", "counters"].map(
+      ["recovery_plans", "reference_library", "checkin_queue", "checkins", "gate_requests", "audit_log", "counters", "voice_profiles", "voice_samples"].map(
         (c) => this.db.collection(c).deleteMany({}),
       ),
     );

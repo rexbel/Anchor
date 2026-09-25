@@ -49,7 +49,8 @@ const STACK = [
   ["NVIDIA OpenShell", "Sandbox for tools and the approval gate for place_checkin_call and flag_pattern_for_clinician.", "src/lib/tools/index.ts, /clinician"],
   ["Local reasoning model", "Qwen 3.8 27B by default, any OpenAI-compatible server (vLLM, Ollama, NIM) including Nemotron.", "src/lib/ai/provider.ts"],
   ["MongoDB", "System of record: plans, library, queue, transcripts, gate requests, audit log.", "src/lib/store/mongo.ts"],
-  ["Kokoro", "Local text to speech for the Digital Twin voice, with a browser fallback.", "src/app/api/tts/route.ts"],
+  ["Digital Twin", "Consented voice sample, cloned locally; falls back to Kokoro, then the browser. Optional self-hearing shaping.", "src/lib/voice/twin.ts"],
+  ["Kokoro", "Local text to speech when no Digital Twin is enrolled, with a browser fallback.", "src/app/api/tts/route.ts"],
 ];
 
 export default function HowItWorks() {

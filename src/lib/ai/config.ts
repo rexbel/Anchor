@@ -14,6 +14,9 @@ export const aiConfig = {
   ttsModel: process.env.ANCHOR_TTS_MODEL ?? "kokoro",
   ttsVoice: process.env.ANCHOR_TTS_VOICE ?? "af_heart",
 
+  /** Voice-cloning TTS (e.g. XTTS-v2 behind a small shim). See README for the contract. */
+  twinTtsUrl: process.env.ANCHOR_TWIN_TTS_URL?.replace(/\/$/, "") ?? "",
+
   openclawHookUrl: process.env.OPENCLAW_HOOK_URL ?? "",
   openclawHookToken: process.env.OPENCLAW_HOOK_TOKEN ?? "",
 };

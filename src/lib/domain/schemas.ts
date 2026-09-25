@@ -180,6 +180,9 @@ export const AuditKindSchema = z.enum([
   "action_executed",
   "escalation_resolved",
   "demo_reset",
+  "voice_enrolled",
+  "voice_updated",
+  "voice_revoked",
 ]);
 export type AuditKind = z.infer<typeof AuditKindSchema>;
 
@@ -210,3 +213,45 @@ export const CheckinRequestSchema = z.object({
   utterance: z.string().trim().min(1, "Enter what the patient said.").max(2000),
 });
 export type CheckinRequest = z.infer<typeof CheckinRequestSchema>;
+
+/* ---------- Digital Twin voice ---------- */
+
+/**
+ * "As you hear yourself" processing. People hear their own voice partly through
+ * bone conduction, which makes it sound fuller and lower than a recording. The
+ * chain approximates that: a low-shelf boost, a gentle high-shelf cut, and a
+ * short, quiet body/room reverb. Applied on the client to rendered audio only.
+ */
+export const SelfHearingSchema = z.object({
+  enabled: z.boolean(),
+  /** dB boost below ~300 Hz. */
+  lowShelfDb: z.number().min(0).max(12),
+  /** dB cut above ~3.5 kHz (0 to -12). */
+  highShelfDb: z.number().min(-12).max(0),
+  /** Reverb wet level, 0 (dry) to 0.5. */
+  reverbMix: z.number().min(0).max(0.5),
+});
+export type SelfHearing = z.infer<typeof SelfHearingSchema>;
+
+export const DEFAULT_SELF_HEARING: SelfHearing = { enabled: true, lowShelfDb: 5, highShelfDb: -4, reverbMix: 0.12 };
+
+export const VoiceProfileSchema = z.object({
+  id: z.string(),
+  patientId: z.string(),
+  status: z.enum(["active", "revoked"]),
+  consent: z.object({
+    consentedBy: z.string(),
+    statement: z.string(),
+    attestedAt: z.string(),
+  }),
+  sample: z.object({
+    mimeType: z.literal("audio/wav"),
+    bytes: z.number().int(),
+    durationSec: z.number(),
+    sampleRate: z.number().int(),
+  }),
+  selfHearing: SelfHearingSchema,
+  createdAt: z.string(),
+  revokedAt: z.string().optional(),
+});
+export type VoiceProfile = z.infer<typeof VoiceProfileSchema>;

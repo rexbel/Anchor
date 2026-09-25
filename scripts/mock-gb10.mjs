@@ -2,11 +2,13 @@
 //
 //   /v1/models, /v1/chat/completions   OpenAI-compatible reasoning model
 //   /v1/audio/speech                   Kokoro-style TTS (returns a short tone)
+//   /twin                              Digital Twin cloning TTS (needs speaker_wav; returns a lower tone)
 //   /hook                              OpenClaw hook (records bounded tasks)
 //
 // Usage: node scripts/mock-gb10.mjs  (listens on MOCK_PORT, default 8765)
 // Then:  ANCHOR_LLM_BASE_URL=http://localhost:8765/v1 \
 //        ANCHOR_TTS_BASE_URL=http://localhost:8765/v1 \
+//        ANCHOR_TWIN_TTS_URL=http://localhost:8765/twin \
 //        OPENCLAW_HOOK_URL=http://localhost:8765/hook npm run dev
 import http from "node:http";
 
@@ -35,15 +37,15 @@ function fakeTriage(text) {
   return { tier: 1, rationale: "Clearly described, situational.", topics: [] };
 }
 
-function tone() {
-  // 0.3 s, 440 Hz, 16-bit mono WAV
+function tone(hz = 440) {
+  // 0.3 s sine, 16-bit mono WAV
   const rate = 16000, n = Math.floor(rate * 0.3);
   const buf = Buffer.alloc(44 + n * 2);
   buf.write("RIFF", 0); buf.writeUInt32LE(36 + n * 2, 4); buf.write("WAVE", 8);
   buf.write("fmt ", 12); buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20); buf.writeUInt16LE(1, 22);
   buf.writeUInt32LE(rate, 24); buf.writeUInt32LE(rate * 2, 28); buf.writeUInt16LE(2, 32); buf.writeUInt16LE(16, 34);
   buf.write("data", 36); buf.writeUInt32LE(n * 2, 40);
-  for (let i = 0; i < n; i++) buf.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 440 * i) / rate) * 8000), 44 + i * 2);
+  for (let i = 0; i < n; i++) buf.writeInt16LE(Math.round(Math.sin((2 * Math.PI * hz * i) / rate) * 8000), 44 + i * 2);
   return buf;
 }
 
@@ -63,6 +65,11 @@ http
     if (req.url === "/v1/audio/speech") {
       res.writeHead(200, { "Content-Type": "audio/wav" });
       return res.end(tone());
+    }
+    if (req.url === "/twin") {
+      if (!body.text || !body.speaker_wav) return json(res, 400, { error: "text and speaker_wav are required" });
+      res.writeHead(200, { "Content-Type": "audio/wav" });
+      return res.end(tone(220));
     }
     if (req.url === "/hook") {
       if (req.headers.authorization !== `Bearer ${process.env.OPENCLAW_HOOK_TOKEN ?? "dev-token"}`) return json(res, 401, { error: "unauthorized" });

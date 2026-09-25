@@ -6,6 +6,7 @@ import type {
   GateRequest,
   RecoveryPlan,
   ReferenceLibraryEntry,
+  VoiceProfile,
 } from "@/lib/domain/schemas";
 import {
   REFERENCE_LIBRARY,
@@ -24,6 +25,8 @@ type State = {
   gate: GateRequest[];
   audit: AuditEvent[];
   seq: number;
+  voices: VoiceProfile[];
+  samples: Record<string, Uint8Array>;
 };
 
 function seed(now: Date): State {
@@ -35,6 +38,8 @@ function seed(now: Date): State {
     gate: [],
     audit: [],
     seq: 0,
+    voices: [],
+    samples: {},
   });
 }
 
@@ -161,6 +166,42 @@ export class MemoryStore implements AnchorStore {
     };
     this.state.audit.push(row);
     return clone(row);
+  }
+
+  async getVoiceProfile(id: string) {
+    const v = this.state.voices.find((p) => p.id === id);
+    return v ? clone(v) : null;
+  }
+
+  async getActiveVoiceProfile(patientId: string) {
+    const v = this.state.voices.find((p) => p.patientId === patientId && p.status === "active");
+    return v ? clone(v) : null;
+  }
+
+  async saveVoiceProfile(profile: VoiceProfile, sample: Uint8Array) {
+    this.state.voices.push(clone(profile));
+    this.state.samples[profile.id] = new Uint8Array(sample);
+  }
+
+  async updateVoiceProfile(id: string, patch: Partial<Pick<VoiceProfile, "selfHearing">>) {
+    const v = this.state.voices.find((p) => p.id === id);
+    if (!v) return null;
+    Object.assign(v, clone(patch));
+    return clone(v);
+  }
+
+  async getVoiceSample(id: string) {
+    const s = this.state.samples[id];
+    return s ? new Uint8Array(s) : null;
+  }
+
+  async revokeVoiceProfile(id: string, at: string) {
+    const v = this.state.voices.find((p) => p.id === id);
+    if (!v) return null;
+    v.status = "revoked";
+    v.revokedAt = at;
+    delete this.state.samples[id];
+    return clone(v);
   }
 
   async reset(now: Date = new Date()) {

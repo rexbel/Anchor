@@ -2,24 +2,29 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import type { SelfHearing } from "@/lib/domain/schemas";
+import { playProcessed, type Playback } from "./self-hearing";
+
 /**
  * Voice I/O for the demo console.
  *
- * Output: Kokoro on the GB10 through /api/tts, falling back to the browser's
- * own speech synthesis when no Kokoro server is configured or reachable.
+ * Output through /api/tts, in order: the patient's Digital Twin (cloned voice),
+ * Kokoro on the GB10, then the browser's own speech synthesis. Rendered audio
+ * can be played "as you hear yourself" (see self-hearing.ts).
  * Input: the browser's speech recognition where available. Typing always works.
  */
 
-export type SpeakEngine = "kokoro" | "browser" | "none";
+export type SpeakEngine = "twin" | "kokoro" | "browser" | "none";
 
-export function useSpeaker() {
+export function useSpeaker(options: { patientId?: string; selfHearing?: SelfHearing | null } = {}) {
   const [speaking, setSpeaking] = useState(false);
   const [engine, setEngine] = useState<SpeakEngine | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playbackRef = useRef<Playback | null>(null);
+  const { patientId, selfHearing } = options;
 
   const stop = useCallback(() => {
-    audioRef.current?.pause();
-    audioRef.current = null;
+    playbackRef.current?.stop();
+    playbackRef.current = null;
     if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
     setSpeaking(false);
   }, []);
@@ -32,19 +37,20 @@ export function useSpeaker() {
         const res = await fetch("/api/tts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text }),
+          body: JSON.stringify({ text, patientId }),
         });
         if (res.ok && res.headers.get("Content-Type")?.startsWith("audio/")) {
-          const url = URL.createObjectURL(await res.blob());
-          const audio = new Audio(url);
-          audioRef.current = audio;
-          audio.onended = () => {
-            URL.revokeObjectURL(url);
-            setSpeaking(false);
-          };
-          await audio.play();
-          setEngine("kokoro");
-          return "kokoro";
+          const used: SpeakEngine = res.headers.get("X-Anchor-Voice-Engine") === "twin" ? "twin" : "kokoro";
+          const playback = await playProcessed(
+            await res.blob(),
+            selfHearing ?? { enabled: false, lowShelfDb: 0, highShelfDb: 0, reverbMix: 0 },
+          );
+          playbackRef.current = playback;
+          void playback.ended.then(() => {
+            if (playbackRef.current === playback) setSpeaking(false);
+          });
+          setEngine(used);
+          return used;
         }
       } catch {
         // fall through to the browser voice
@@ -62,7 +68,7 @@ export function useSpeaker() {
       setEngine("none");
       return "none";
     },
-    [stop],
+    [stop, patientId, selfHearing],
   );
 
   useEffect(() => stop, [stop]);
