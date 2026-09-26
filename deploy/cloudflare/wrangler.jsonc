@@ -1,0 +1,33 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "anchor-edge",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "observability": { "enabled": true },
+
+  // Runs in front of the tunnel's DNS record. A subrequest to the same hostname
+  // goes to the origin (the Mac's tunnel), not back into this Worker.
+  "routes": [{ "pattern": "anchor.nextrex.health/*", "zone_name": "nextrex.health" }],
+  "workers_dev": false,
+
+  "vars": {
+    "MAC_ORIGIN": "https://anchor.nextrex.health"
+  },
+
+  // The cloud copy: the repo's production Dockerfile, one instance. The in-memory
+  // store only stays consistent inside a single process, so never raise max_instances
+  // without moving the store to MongoDB first.
+  "containers": [
+    {
+      "class_name": "AnchorContainer",
+      "image": "../../Dockerfile",
+      "image_build_context": "../..",
+      "instance_type": "basic",
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "ANCHOR_CLOUD", "class_name": "AnchorContainer" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["AnchorContainer"] }]
+}

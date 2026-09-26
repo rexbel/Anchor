@@ -40,3 +40,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# cloudflare worker (deploy/cloudflare)
+/deploy/cloudflare/node_modules
+/deploy/cloudflare/.wrangler
+/deploy/cloudflare/worker-configuration.d.ts
